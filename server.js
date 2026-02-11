@@ -44,7 +44,7 @@ app.post("/chat", async (req, res) => {
           Authorization: `Bearer ${OPENAI_API_KEY}`,
         },
         body: JSON.stringify({
-          model: "gpt-3.5-turbo",
+          model: "gpt-4o-mini",
           input: [
             npcPrompt
               ? { role: "system", content: npcPrompt }
