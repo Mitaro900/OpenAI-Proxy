@@ -1,0 +1,25 @@
+{
+  "name": "openai-proxy",
+  "version": "1.0.0",
+  "description": "클라이언트(유니티)에서 받은 요청을 OpenAI API에 보내고 받은 응답을 다시 클라이언트로 보내기 위해 설계한 프록시 서버입니다.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Mitaro900/OpenAI-Proxy.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/Mitaro900/OpenAI-Proxy/issues"
+  },
+  "homepage": "https://github.com/Mitaro900/OpenAI-Proxy#readme",
+  "dependencies": {
+    "dotenv": "^17.2.4",
+    "express": "^5.2.1"
+  }
+}
