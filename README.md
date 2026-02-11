@@ -4,7 +4,7 @@
 # 로컬 실행 방법
 npm install
 cp .env.example .env
-# .env에 OPENAI_API_KEY 입력
+.env에 OPENAI_API_KEY 입력
 node server.js
 
 # 테스트 방법
@@ -12,4 +12,3 @@ curl http://localhost:3000/health
 curl -X POST http://localhost:3000/chat \
   -H "Content-Type: application/json" \
   -d '{"input":"안녕!","npcPrompt":"너는 친절한 NPC야."}'
-  
