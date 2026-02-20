@@ -10,6 +10,7 @@ if (!OPENAI_API_KEY) {
 }
 
 const APP_TOKEN = process.env.APP_TOKEN;
+const MODEL = process.env.OPENAI_MODEL || "gpt-4o-mini"; // 필요시 env로 변경
 
 if (process.env.NODE_ENV === "development") {
   console.log("DEV MODE");
@@ -19,6 +20,51 @@ if (process.env.NODE_ENV === "development") {
 app.get("/health", (req, res) => {
   res.json({ ok: true });
 });
+
+// 모델이 반환해야 하는 JSON 스키마
+function jsonGuard() {
+  return {
+    role: "system",
+    content: [
+      "You must respond with a SINGLE JSON object only.",
+      "No markdown, no code fences, no extra text.",
+      'Schema: {"text": string, "choices": [{"id": string, "label": string}] }',
+      'If no choices are needed, set "choices" to an empty array.',
+      'Choice.id must be either:',
+      '- "quest_step:<questId>:<stepId>" for quest step request, or',
+      '- a short string like "talk_normal" for normal dialogue choices.',
+    ].join("\n"),
+  };
+}
+
+// content(JSON 문자열) -> Unity용 payload로 안전 변환
+function safeParseToUnityResponse(content) {
+  try {
+    const obj = JSON.parse(content);
+
+    const text = typeof obj.text === "string" ? obj.text : "";
+    const rawChoices = Array.isArray(obj.choices) ? obj.choices : [];
+
+    const choices = rawChoices
+      .filter(
+        (c) =>
+          c &&
+          typeof c === "object" &&
+          typeof c.id === "string" &&
+          typeof c.label === "string"
+      )
+      .map((c) => ({ id: c.id, label: c.label }));
+
+    // text가 비었으면 content를 text로 대체(최후 방어)
+    return {
+      text: text || (content ?? ""),
+      choices,
+    };
+  } catch {
+    // JSON이 깨졌으면 content를 그대로 text로 사용
+    return { text: content ?? "", choices: [] };
+  }
+}
 
 app.post("/chat", async (req, res) => {
   const token = req.header("X-App-Token");
@@ -33,27 +79,31 @@ app.post("/chat", async (req, res) => {
     if (!input || typeof input !== "string") {
       return res.status(400).json({ error: "input is required" });
     }
+    if (npcPrompt != null && typeof npcPrompt !== "string") {
+      return res.status(400).json({ error: "npcPrompt must be a string" });
+    }
 
-    // ---- 2) OpenAI Responses API 호출 ----
-    const openaiResponse = await fetch(
-      "https://api.openai.com/v1/responses",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${OPENAI_API_KEY}`,
-        },
-        body: JSON.stringify({
-          model: "gpt-4o-mini",
-          input: [
-            npcPrompt
-              ? { role: "system", content: npcPrompt }
-              : null,
-            { role: "user", content: input },
-          ].filter(Boolean),
-        }),
-      }
-    );
+    // ---- 2) OpenAI API 호출 ----
+    const messages = [
+      jsonGuard(),
+      ...(npcPrompt ? [{ role: "system", content: npcPrompt }] : []),
+      { role: "user", content: input },
+    ];
+
+    const openaiResponse = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${OPENAI_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: MODEL,
+        messages,
+        temperature: 0.7,
+        // JSON 모드(가능하면 켜는 게 안정적)
+        response_format: { type: "json_object" },
+      }),
+    });
 
     const data = await openaiResponse.json();
 
@@ -62,18 +112,19 @@ app.post("/chat", async (req, res) => {
       return res.status(openaiResponse.status).json(data);
     }
 
-    // ---- 3) 텍스트 안전 추출 ----
-    const text =
-      data?.output?.[0]?.content?.[0]?.text ??
-      data?.output_text ??
-      "";
-
-    if (!text) {
-      return res.status(500).json({ error: "empty_response" });
+    // 3) 모델 출력 content 추출
+    const content = data?.choices?.[0]?.message?.content ?? "";
+    if (!content) {
+      return res.status(500).json({ error: "empty_response", raw: data });
     }
 
-    // ---- 4) Unity용 응답 ----
-    return res.json({ text });
+    // 4) Unity용 {text, choices}로 변환하여 반환
+    const payload = safeParseToUnityResponse(content);
+    if (!payload.text) {
+      return res.status(500).json({ error: "empty_text_after_parse", raw: content });
+    }
+
+    return res.json(payload);
   } catch (err) {
     console.error(err);
     return res.status(500).json({ error: "server_error" });
